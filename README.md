@@ -37,14 +37,14 @@ The normal skill install is what makes casual prompts like "inspect your context
 
 ### Manual install
 
+Equivalent manual steps:
+
 ```bash
 repo_dir="$(pwd)"
 hermes_home="${HERMES_HOME:-$HOME/.hermes}"
-mkdir -p "$hermes_home/plugins"
-mkdir -p "$hermes_home/skills"
+install -d "$hermes_home/plugins" "$hermes_home/skills/context-inspect"
 ln -sfn "$repo_dir" "$hermes_home/plugins/context-bro"
-mkdir -p "$hermes_home/skills/context-inspect"
-cp "$repo_dir/skills/context-inspect/SKILL.md" "$hermes_home/skills/context-inspect/SKILL.md"
+install -m 0644 "$repo_dir/skills/context-inspect/SKILL.md" "$hermes_home/skills/context-inspect/SKILL.md"
 hermes plugins enable context-bro
 hermes gateway restart
 ```

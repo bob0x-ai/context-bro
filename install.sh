@@ -12,13 +12,27 @@ skill_source="${repo_dir}/skills/${skill_name}"
 skill_target="${skill_root}/${skill_name}"
 skill_file="${skill_target}/SKILL.md"
 
-mkdir -p "${plugin_root}" "${skill_root}"
+ensure_dir() {
+  if [ ! -d "$1" ]; then
+    mkdir -p "$1"
+  fi
+}
+
+is_context_bro_plugin() {
+  [ -f "$1/plugin.yaml" ] && grep -q "^name: context-bro$" "$1/plugin.yaml" 2>/dev/null
+}
+
+ensure_dir "${plugin_root}"
+ensure_dir "${skill_root}"
 
 if [ -L "${plugin_target}" ] || [ ! -e "${plugin_target}" ]; then
   ln -sfn "${repo_dir}" "${plugin_target}"
+elif [ -d "${plugin_target}" ] && is_context_bro_plugin "${plugin_target}"; then
+  :
 else
-  printf 'Plugin target already exists and is not a symlink: %s\n' "${plugin_target}" >&2
-  printf 'Leaving it untouched. Remove it manually if you want this script to replace it.\n' >&2
+  printf 'Cannot install plugin because this path is already in use: %s\n' "${plugin_target}" >&2
+  printf 'Move it aside or remove it, then rerun ./install.sh.\n' >&2
+  exit 1
 fi
 
 if [ -L "${skill_target}" ]; then
@@ -26,19 +40,21 @@ if [ -L "${skill_target}" ]; then
 fi
 
 if [ ! -e "${skill_target}" ]; then
-  mkdir -p "${skill_target}"
+  ensure_dir "${skill_target}"
 fi
 
 if [ -d "${skill_target}" ]; then
   if [ ! -e "${skill_file}" ] || grep -q "author: context-bro" "${skill_file}" 2>/dev/null; then
     cp "${skill_source}/SKILL.md" "${skill_file}"
   else
-    printf 'Skill target already exists and does not look managed by context-bro: %s\n' "${skill_target}" >&2
-    printf 'Leaving it untouched. The plugin skill remains available as context-bro:context-inspect.\n' >&2
+    printf 'Cannot install normal skill because this path is already in use: %s\n' "${skill_file}" >&2
+    printf 'The plugin skill remains available as context-bro:context-inspect.\n' >&2
+    exit 1
   fi
 else
-  printf 'Skill target already exists and is not a symlink: %s\n' "${skill_target}" >&2
-  printf 'Leaving it untouched. The plugin skill remains available as context-bro:context-inspect.\n' >&2
+  printf 'Cannot install normal skill because this path is already in use: %s\n' "${skill_target}" >&2
+  printf 'The plugin skill remains available as context-bro:context-inspect.\n' >&2
+  exit 1
 fi
 
 if command -v hermes >/dev/null 2>&1; then
