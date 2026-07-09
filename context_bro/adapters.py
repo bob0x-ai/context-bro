@@ -4,9 +4,12 @@ import json
 import os
 import sqlite3
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+
+from hermes_cli.profiles import get_active_profile_name, get_profile_dir, list_profiles
 
 from .core import PromptSnapshot, _subtract_blocks
 
@@ -43,6 +46,45 @@ def _resolve_session_db_path() -> Path:
     return _hermes_home() / "state.db"
 
 
+def _resolve_agent_home(agent_name: str | None) -> tuple[str, Path]:
+    if not agent_name:
+        return "default", _hermes_home()
+
+    active = get_active_profile_name()
+
+    requested = str(agent_name).strip()
+    if not requested:
+        return active, _hermes_home()
+
+    if requested.casefold() == active.casefold():
+        return active, _hermes_home()
+
+    try:
+        for profile in list_profiles():
+            if profile.name.casefold() == requested.casefold():
+                return profile.name, profile.path
+    except Exception:
+        pass
+
+    try:
+        return requested, get_profile_dir(requested)
+    except Exception:
+        return requested, _hermes_home()
+
+
+@contextmanager
+def _temporary_hermes_home(path: Path):
+    previous = os.environ.get("HERMES_HOME")
+    os.environ["HERMES_HOME"] = str(path)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("HERMES_HOME", None)
+        else:
+            os.environ["HERMES_HOME"] = previous
+
+
 def _load_latest_session_id(conn: sqlite3.Connection) -> str | None:
     row = conn.execute(
         "SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1"
@@ -52,26 +94,31 @@ def _load_latest_session_id(conn: sqlite3.Connection) -> str | None:
     return str(row[0] if not isinstance(row, sqlite3.Row) else row["id"])
 
 
-def _load_session_snapshot(session_id: str | None) -> tuple[str | None, str | None, list[dict[str, Any]]]:
-    path = _resolve_session_db_path()
+def _load_session_snapshot(
+    session_id: str | None,
+    *,
+    agent_name: str | None = None,
+) -> tuple[str | None, str | None, str | None, str | None, list[dict[str, Any]]]:
+    resolved_agent_name, home = _resolve_agent_home(agent_name)
+    path = home / "state.db"
     if not path.exists():
-        return None, None, []
+        return resolved_agent_name, None, None, None, []
     try:
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
     except Exception:
-        return None, None, []
+        return resolved_agent_name, None, None, None, []
     try:
         if not session_id:
             session_id = _load_latest_session_id(conn)
         if not session_id:
-            return None, None, []
+            return resolved_agent_name, None, None, None, []
         row = conn.execute(
-            "SELECT id, title FROM sessions WHERE id = ?",
+            "SELECT id, title, display_name, source FROM sessions WHERE id = ?",
             (session_id,),
         ).fetchone()
         if row is None:
-            return None, None, []
+            return resolved_agent_name, None, None, None, []
         messages = []
         for msg in conn.execute(
             """
@@ -106,7 +153,13 @@ def _load_session_snapshot(session_id: str | None) -> tuple[str | None, str | No
                     "timestamp": msg["timestamp"],
                 }
             )
-        return str(row["id"]), str(row["title"] or ""), messages
+        return (
+            resolved_agent_name,
+            str(row["id"]),
+            str(row["title"] or ""),
+            str(row["display_name"] or ""),
+            messages,
+        )
     finally:
         conn.close()
 
@@ -127,6 +180,7 @@ def _run_prompt_size_fallback(platform: str) -> dict[str, Any]:
 @dataclass
 class RuntimeSnapshot:
     platform: str
+    agent_name: str
     model: str
     cwd: str
     stable: str
@@ -145,6 +199,8 @@ class RuntimeSnapshot:
     toolset_map: dict[str, str]
     session_id: str | None
     session_title: str | None
+    session_display_name: str | None
+    session_source: str | None
     session_messages: list[dict[str, Any]]
     warnings: list[str]
 
@@ -163,11 +219,14 @@ def load_runtime_snapshot(
     *,
     platform: str = "cli",
     cwd: str | None = None,
+    agent: str | None = None,
     include_session: bool = True,
     session_id: str | None = None,
 ) -> RuntimeSnapshot:
     cwd = cwd or os.getcwd()
     warnings: list[str] = []
+    selected_agent_name, selected_home = _resolve_agent_home(agent)
+    agent_name = selected_agent_name
     model = ""
 
     identity = ""
@@ -185,63 +244,67 @@ def load_runtime_snapshot(
     context = ""
     volatile = ""
 
-    try:
-        from hermes_cli.config import load_config
-        from hermes_cli.tools_config import _get_platform_tools
-        from run_agent import AIAgent
-        from agent.prompt_builder import (
-            DEFAULT_AGENT_IDENTITY,
-            build_context_files_prompt,
-            build_environment_hints,
-            build_nous_subscription_prompt,
-            build_skills_system_prompt,
-            load_soul_md,
-        )
-        from agent.system_prompt import build_system_prompt_parts
-        from hermes_time import now as hermes_now
-    except Exception as exc:
-        warnings.append(f"hermes imports unavailable: {exc}")
-        fallback = _run_prompt_size_fallback(platform)
-        return RuntimeSnapshot(
+    with _temporary_hermes_home(selected_home):
+        try:
+            from hermes_cli.config import load_config
+            from hermes_cli.tools_config import _get_platform_tools
+            from run_agent import AIAgent
+            from agent.prompt_builder import (
+                DEFAULT_AGENT_IDENTITY,
+                build_context_files_prompt,
+                build_environment_hints,
+                build_nous_subscription_prompt,
+                build_skills_system_prompt,
+                load_soul_md,
+            )
+            from agent.system_prompt import build_system_prompt_parts
+            from hermes_time import now as hermes_now
+        except Exception as exc:
+            warnings.append(f"hermes imports unavailable: {exc}")
+            fallback = _run_prompt_size_fallback(platform)
+            return RuntimeSnapshot(
+                platform=platform,
+                agent_name=agent_name,
+                model=str(fallback.get("model") or ""),
+                cwd=cwd,
+                stable="",
+                context="",
+                volatile="",
+                identity="",
+                skills_index="",
+                nous_subscription="",
+                environment_bundle="",
+                core_guidance="",
+                memory_block="",
+                user_profile_block="",
+                external_memory_block="",
+                timestamp_block="",
+                tool_schemas=[],
+                toolset_map={},
+                session_id=None,
+                session_title=None,
+                session_display_name=None,
+                session_source=None,
+                session_messages=[],
+                warnings=warnings,
+            )
+
+        cfg = load_config() or {}
+        model_cfg = cfg.get("model", {}) if isinstance(cfg.get("model"), dict) else {}
+        model = str(model_cfg.get("default") or model_cfg.get("model") or "")
+        enabled_toolsets = sorted(_get_platform_tools(cfg, platform))
+        disabled_toolsets = (cfg.get("agent") or {}).get("disabled_toolsets") or None
+
+        agent = AIAgent(
+            model=model,
+            api_key="inspect-only",
+            base_url="https://openrouter.ai/api/v1",
+            quiet_mode=True,
+            save_trajectories=False,
             platform=platform,
-            model=str(fallback.get("model") or ""),
-            cwd=cwd,
-            stable="",
-            context="",
-            volatile="",
-            identity="",
-            skills_index="",
-            nous_subscription="",
-            environment_bundle="",
-            core_guidance="",
-            memory_block="",
-            user_profile_block="",
-            external_memory_block="",
-            timestamp_block="",
-            tool_schemas=[],
-            toolset_map={},
-            session_id=None,
-            session_title=None,
-            session_messages=[],
-            warnings=warnings,
+            enabled_toolsets=enabled_toolsets,
+            disabled_toolsets=disabled_toolsets,
         )
-
-    cfg = load_config() or {}
-    model_cfg = cfg.get("model", {}) if isinstance(cfg.get("model"), dict) else {}
-    model = str(model_cfg.get("default") or model_cfg.get("model") or "")
-    enabled_toolsets = sorted(_get_platform_tools(cfg, platform))
-    disabled_toolsets = (cfg.get("agent") or {}).get("disabled_toolsets") or None
-
-    agent = AIAgent(
-        model=model,
-        api_key="inspect-only",
-        base_url="https://openrouter.ai/api/v1",
-        quiet_mode=True,
-        save_trajectories=False,
-        platform=platform,
-        enabled_toolsets=enabled_toolsets,
-        disabled_toolsets=disabled_toolsets,
-    )
 
     parts = build_system_prompt_parts(agent)
     stable = parts.get("stable", "") or ""
@@ -306,7 +369,7 @@ def load_runtime_snapshot(
     try:
         from agent.file_safety import _resolve_active_profile_name
 
-        active_profile = _resolve_active_profile_name()
+        active_profile = agent_name
         if active_profile == "default":
             env_blocks.append(
                 "Active Hermes profile: default. Other profiles (if any) live under ~/.hermes/profiles/<name>/. "
@@ -373,15 +436,37 @@ def load_runtime_snapshot(
 
     loaded_session_id: str | None = None
     session_title: str | None = None
+    session_display_name: str | None = None
+    session_source: str | None = None
     session_messages: list[dict[str, Any]] = []
     if include_session:
         try:
-            loaded_session_id, session_title, session_messages = _load_session_snapshot(session_id)
+            (
+                agent_name,
+                loaded_session_id,
+                session_title,
+                session_display_name,
+                session_messages,
+            ) = _load_session_snapshot(session_id, agent_name=requested_agent_name)
+            if loaded_session_id:
+                path = _resolve_agent_home(agent_name)[1] / "state.db"
+                if path.exists():
+                    conn = sqlite3.connect(str(path))
+                    conn.row_factory = sqlite3.Row
+                    try:
+                        row = conn.execute(
+                            "SELECT source FROM sessions WHERE id = ?",
+                            (loaded_session_id,),
+                        ).fetchone()
+                        session_source = str(row["source"] or "") if row else None
+                    finally:
+                        conn.close()
         except Exception as exc:
             warnings.append(f"session snapshot unavailable: {exc}")
 
     return RuntimeSnapshot(
         platform=platform,
+        agent_name=agent_name,
         model=model,
         cwd=cwd,
         stable=stable,
@@ -400,6 +485,8 @@ def load_runtime_snapshot(
         toolset_map=toolset_map,
         session_id=loaded_session_id,
         session_title=session_title,
+        session_display_name=session_display_name,
+        session_source=session_source,
         session_messages=session_messages,
         warnings=warnings,
     )
@@ -408,6 +495,7 @@ def load_runtime_snapshot(
 def snapshot_to_prompt_snapshot(snapshot: RuntimeSnapshot) -> PromptSnapshot:
     return PromptSnapshot(
         platform=snapshot.platform,
+        agent_name=snapshot.agent_name,
         model=snapshot.model,
         cwd=snapshot.cwd,
         stable=snapshot.stable,
@@ -425,8 +513,9 @@ def snapshot_to_prompt_snapshot(snapshot: RuntimeSnapshot) -> PromptSnapshot:
         tool_schemas=snapshot.tool_schemas,
         toolset_map=snapshot.toolset_map,
         session_id=snapshot.session_id,
+        session_display_name=snapshot.session_display_name,
+        session_source=snapshot.session_source,
         session_messages=snapshot.session_messages,
         session_title=snapshot.session_title,
         warnings=snapshot.warnings,
     )
-

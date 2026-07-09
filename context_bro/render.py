@@ -14,15 +14,83 @@ def _fmt_bytes(value: int) -> str:
     return f"{value:,}"
 
 
-def render_table(report: ContextReport, *, max_depth: int = 2) -> str:
-    rows = report.root.flatten(max_depth=max_depth)
+def _iter_nodes(node: ContextTreeNode, depth: int = 0) -> list[tuple[int, ContextTreeNode]]:
+    rows = [(depth, node)]
+    for child in node.children:
+        rows.extend(_iter_nodes(child, depth + 1))
+    return rows
+
+
+def _normalize(value: str) -> str:
+    return value.strip().lower()
+
+
+def _path_to_node(root: ContextTreeNode, target_id: str) -> list[ContextTreeNode]:
+    if root.id == target_id:
+        return [root]
+    for child in root.children:
+        path = _path_to_node(child, target_id)
+        if path:
+            return [root, *path]
+    return []
+
+
+def _select_focus_node(
+    root: ContextTreeNode,
+    focus: str | None,
+) -> tuple[ContextTreeNode, list[ContextTreeNode], str | None]:
+    if not focus:
+        return root, [root], None
+
+    query = _normalize(focus)
+    all_nodes = _iter_nodes(root)
+
+    exact_id_matches = [node for _, node in all_nodes if _normalize(node.id) == query]
+    if exact_id_matches:
+        node = max(exact_id_matches, key=lambda n: (len(_path_to_node(root, n.id)), -n.tokens))
+        return node, _path_to_node(root, node.id), focus
+
+    exact_label_matches = [node for _, node in all_nodes if _normalize(node.label) == query]
+    if exact_label_matches:
+        node = max(exact_label_matches, key=lambda n: (len(_path_to_node(root, n.id)), -n.tokens))
+        return node, _path_to_node(root, node.id), focus
+
+    substring_matches = [
+        node
+        for _, node in all_nodes
+        if query in _normalize(node.id) or query in _normalize(node.label)
+    ]
+    if substring_matches:
+        node = max(substring_matches, key=lambda n: (len(_path_to_node(root, n.id)), -n.tokens))
+        return node, _path_to_node(root, node.id), focus
+
+    return root, [root], focus
+
+
+def render_table(
+    report: ContextReport,
+    *,
+    max_depth: int = 2,
+    focus: str | None = None,
+) -> str:
+    selected_root, path, focus_query = _select_focus_node(report.root, focus)
+    rows = selected_root.flatten(max_depth=max_depth)
     label_width = max((len("  " * depth + node.label) for depth, node in rows), default=12)
     lines: list[str] = []
     lines.append("Context Bro snapshot")
     lines.append(
-        f"platform={report.platform}  model={report.model or 'unset'}  "
-        f"session={report.session_id or 'n/a'}  total={_fmt_tokens(report.total_tokens)} tok"
+        f"platform={report.platform}  agent={report.agent_name or 'default'}  "
+        f"model={report.model or 'unset'}  session={report.session_id or 'n/a'}  "
+        f"name={report.session_title or report.session_display_name or 'untitled'}  "
+        f"total={_fmt_tokens(report.total_tokens)} tok"
     )
+    if focus_query:
+        path_text = " > ".join(node.label for node in path)
+        lines.append(f"focus={focus_query}  path={path_text}")
+    if report.session_display_name and report.session_display_name != report.session_title:
+        lines.append(f"session_display_name={report.session_display_name}")
+    if report.session_source:
+        lines.append(f"session_source={report.session_source}")
     if report.warnings:
         for warning in report.warnings:
             lines.append(f"warning: {warning}")
@@ -40,6 +108,12 @@ def render_table(report: ContextReport, *, max_depth: int = 2) -> str:
     return "\n".join(lines)
 
 
-def render_json(report: ContextReport) -> str:
-    return json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
-
+def render_json(report: ContextReport, *, focus: str | None = None) -> str:
+    payload = report.to_dict()
+    if focus:
+        selected_root, path, focus_query = _select_focus_node(report.root, focus)
+        payload["focus"] = focus_query
+        payload["focus_path"] = [node.id for node in path]
+        payload["focus_label_path"] = [node.label for node in path]
+        payload["selected_root"] = selected_root.to_dict()
+    return json.dumps(payload, ensure_ascii=False, indent=2)

@@ -19,8 +19,11 @@ def _report():
         user_profile_block="",
         external_memory_block="",
         timestamp_block="c",
-        tool_schemas=[],
-        toolset_map={},
+        tool_schemas=[
+            {"type": "function", "function": {"name": "browser_navigate", "description": "Browser", "parameters": {"type": "object"}}},
+            {"type": "function", "function": {"name": "terminal", "description": "Terminal", "parameters": {"type": "object"}}},
+        ],
+        toolset_map={"browser_navigate": "browser", "terminal": "terminal"},
         session_messages=[],
     )
     return build_context_report(snapshot)
@@ -37,3 +40,15 @@ def test_render_json_is_valid() -> None:
     assert '"generated_at"' in text
     assert '"root"' in text
 
+
+def test_render_table_focuses_on_matching_subtree() -> None:
+    text = render_table(_report(), focus="tools.terminal")
+    assert "focus=tools.terminal" in text
+    assert "terminal" in text
+    assert "browser" not in text
+
+
+def test_render_json_includes_focus_metadata() -> None:
+    text = render_json(_report(), focus="tools.terminal")
+    assert '"focus": "tools.terminal"' in text
+    assert '"selected_root"' in text

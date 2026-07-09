@@ -149,9 +149,13 @@ class ContextTreeNode:
 class ContextReport:
     generated_at: str
     platform: str
+    agent_name: str
     model: str
     cwd: str
     session_id: str | None
+    session_title: str | None
+    session_display_name: str | None
+    session_source: str | None
     total_bytes: int
     total_tokens: int
     root: ContextTreeNode
@@ -161,9 +165,13 @@ class ContextReport:
         return {
             "generated_at": self.generated_at,
             "platform": self.platform,
+            "agent_name": self.agent_name,
             "model": self.model,
             "cwd": self.cwd,
             "session_id": self.session_id,
+            "session_title": self.session_title,
+            "session_display_name": self.session_display_name,
+            "session_source": self.session_source,
             "total_bytes": self.total_bytes,
             "total_tokens": self.total_tokens,
             "warnings": self.warnings,
@@ -190,7 +198,10 @@ class PromptSnapshot:
     timestamp_block: str
     tool_schemas: list[dict[str, Any]]
     toolset_map: dict[str, str]
+    agent_name: str = ""
     session_id: str | None = None
+    session_display_name: str | None = None
+    session_source: str | None = None
     session_messages: list[dict[str, Any]] = field(default_factory=list)
     session_title: str | None = None
     warnings: list[str] = field(default_factory=list)
@@ -431,9 +442,13 @@ def build_context_report(snapshot: PromptSnapshot) -> ContextReport:
     return ContextReport(
         generated_at=datetime.now(timezone.utc).isoformat(),
         platform=snapshot.platform,
+        agent_name=getattr(snapshot, "agent_name", ""),
         model=snapshot.model,
         cwd=snapshot.cwd,
         session_id=snapshot.session_id,
+        session_title=snapshot.session_title,
+        session_display_name=getattr(snapshot, "session_display_name", None),
+        session_source=getattr(snapshot, "session_source", None),
         total_bytes=root.bytes,
         total_tokens=root.tokens,
         root=root,

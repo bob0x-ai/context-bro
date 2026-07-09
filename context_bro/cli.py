@@ -9,11 +9,33 @@ from .render import render_json, render_table
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="context-inspect", add_help=True)
+    parser = argparse.ArgumentParser(
+        prog="context-inspect",
+        add_help=True,
+        description="Inspect Hermes prompt/context cost centers as a hierarchical snapshot.",
+        epilog=(
+            "Examples:\n"
+            "  hermes context-inspect\n"
+            "  hermes context-inspect --agent writer\n"
+            "  hermes context-inspect --focus tools.terminal --depth 1\n"
+            "  hermes context-inspect --json --no-session"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a table")
     parser.add_argument("--platform", default="cli", help="Hermes platform to inspect")
     parser.add_argument("--cwd", default=None, help="Working directory used for context-file discovery")
+    parser.add_argument(
+        "--agent",
+        default=None,
+        help="Inspect the latest session for a specific Hermes profile",
+    )
     parser.add_argument("--session-id", default=None, help="Inspect a specific session from state.db")
+    parser.add_argument(
+        "--focus",
+        default=None,
+        help="Render only the matching subtree, such as tools.terminal or terminal",
+    )
     parser.add_argument(
         "--no-session",
         action="store_true",
@@ -21,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--max-depth",
+        "--depth",
         type=int,
         default=2,
         help="Maximum tree depth to render in text mode",
@@ -34,19 +57,19 @@ def run(argv: list[str] | None = None) -> int:
     snapshot = load_runtime_snapshot(
         platform=args.platform,
         cwd=args.cwd,
+        agent=args.agent,
         include_session=not args.no_session,
         session_id=args.session_id,
     )
     report = build_context_report(snapshot_to_prompt_snapshot(snapshot))
     if args.json:
-        sys.stdout.write(render_json(report))
+        sys.stdout.write(render_json(report, focus=args.focus))
         sys.stdout.write("\n")
     else:
-        sys.stdout.write(render_table(report, max_depth=args.max_depth))
+        sys.stdout.write(render_table(report, max_depth=args.max_depth, focus=args.focus))
         sys.stdout.write("\n")
     return 0
 
 
 def main() -> None:
     raise SystemExit(run())
-
