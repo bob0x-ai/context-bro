@@ -5,6 +5,7 @@
 - `hermes context-inspect`
 - `/context`
 - `context-bro:context-inspect` plugin skill
+- `context-inspect` normal Hermes skill when installed via `install.sh`
 
 It prints a hierarchical snapshot of where prompt space goes, with a focus on the biggest cost centers first:
 
@@ -15,26 +16,35 @@ It prints a hierarchical snapshot of where prompt space goes, with a focus on th
 
 ## Install
 
-The plugin is meant to live outside Hermes core so Hermes updates do not overwrite it. The safest install is a symlink into `~/.hermes/plugins/` that points back to this repo.
+The plugin is meant to live outside Hermes core so Hermes updates do not overwrite it. The safest install is a symlink into `${HERMES_HOME:-~/.hermes}/plugins/` that points back to your checkout.
 
 ### Quick install
 
 ```bash
-cd /home/ubuntu/projects/context-bro
+git clone https://github.com/bob0x-ai/context-bro.git
+cd context-bro
 ./install.sh
 ```
 
 What the script does:
 
-- creates or refreshes `~/.hermes/plugins/context-bro -> /home/ubuntu/projects/context-bro`
+- creates or refreshes `${HERMES_HOME:-~/.hermes}/plugins/context-bro -> <this checkout>`
+- installs `${HERMES_HOME:-~/.hermes}/skills/context-inspect/SKILL.md` from the packaged skill
 - enables the plugin in Hermes if needed
-- prints a reminder to restart the gateway so the new command surfaces everywhere
+- prints a reminder to restart the gateway so the new command and slash alias surface everywhere
+
+The normal skill install is what makes casual prompts like "inspect your context" more likely to work: the same guidance is available both as the explicit plugin skill `context-bro:context-inspect` and as the normal skill `context-inspect`.
 
 ### Manual install
 
 ```bash
-mkdir -p ~/.hermes/plugins
-ln -sfn /home/ubuntu/projects/context-bro ~/.hermes/plugins/context-bro
+repo_dir="$(pwd)"
+hermes_home="${HERMES_HOME:-$HOME/.hermes}"
+mkdir -p "$hermes_home/plugins"
+mkdir -p "$hermes_home/skills"
+ln -sfn "$repo_dir" "$hermes_home/plugins/context-bro"
+mkdir -p "$hermes_home/skills/context-inspect"
+cp "$repo_dir/skills/context-inspect/SKILL.md" "$hermes_home/skills/context-inspect/SKILL.md"
 hermes plugins enable context-bro
 hermes gateway restart
 ```
@@ -52,6 +62,7 @@ hermes context-inspect
 - `hermes context-inspect --agent <profile>` inspects the latest session for a specific Hermes profile.
 - `/context` inspects the session in the runtime where it was invoked.
 - `skill_view("context-bro:context-inspect")` gives an agent the operating notes for the CLI command.
+- `skill_view("context-inspect")` works after `install.sh` installs the packaged skill into the normal Hermes skills directory.
 - `--help` shows usage and examples for both the CLI command and the slash command.
 - `--focus <node>` drills into a subtree such as `tools.terminal`.
 - `--depth <n>` limits how deep the tree is rendered.
