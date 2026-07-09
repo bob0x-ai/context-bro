@@ -6,6 +6,7 @@ class FakeCtx:
     def __init__(self) -> None:
         self.cli = None
         self.slash = None
+        self.skill = None
 
     def register_cli_command(self, **kwargs):
         self.cli = kwargs
@@ -13,12 +14,18 @@ class FakeCtx:
     def register_command(self, *args, **kwargs):
         self.slash = (args, kwargs)
 
+    def register_skill(self, *args, **kwargs):
+        self.skill = (args, kwargs)
+
 
 def test_register_exposes_cli_and_slash_commands() -> None:
     ctx = FakeCtx()
     register(ctx)
     assert ctx.cli["name"] == "context-inspect"
     assert ctx.slash[0] == ("context",)
+    assert ctx.skill[0][0] == "context-inspect"
+    assert ctx.skill[0][1].name == "SKILL.md"
+    assert ctx.skill[0][1].exists()
 
 
 def test_cli_setup_works_with_builtin_argparse_help() -> None:

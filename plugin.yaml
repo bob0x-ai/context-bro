@@ -1,4 +1,5 @@
 name: context-bro
 version: 0.1.0
 description: "Hierarchical Hermes context snapshot and tool-definition inspector."
-
+provides_skills:
+  - context-inspect

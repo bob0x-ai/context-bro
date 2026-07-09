@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import argparse
 import shlex
+from pathlib import Path
 from typing import Any
 
 from .adapters import load_runtime_snapshot, snapshot_to_prompt_snapshot
 from .core import build_context_report
 from .render import render_json, render_table
+
+
+_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+_SKILL_PATH = _PLUGIN_ROOT / "skills" / "context-inspect" / "SKILL.md"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -90,4 +95,9 @@ def register(ctx) -> None:
         handler=_handle_slash,
         description="Inspect prompt/context blocks and tool schemas",
         args_hint="[--json] [--help] [--agent <profile>] [--focus <node>] [--depth <n>] [--session-id <id>] [--no-session]",
+    )
+    ctx.register_skill(
+        "context-inspect",
+        _SKILL_PATH,
+        "Use hermes context-inspect to inspect prompt, tool-schema, and session-history token costs.",
     )

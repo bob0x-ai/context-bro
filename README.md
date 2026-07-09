@@ -4,6 +4,7 @@
 
 - `hermes context-inspect`
 - `/context`
+- `context-bro:context-inspect` plugin skill
 
 It prints a hierarchical snapshot of where prompt space goes, with a focus on the biggest cost centers first:
 
@@ -50,6 +51,7 @@ hermes context-inspect
 - `hermes context-inspect` inspects the latest session for the `default` profile when no `--agent` is provided.
 - `hermes context-inspect --agent <profile>` inspects the latest session for a specific Hermes profile.
 - `/context` inspects the session in the runtime where it was invoked.
+- `skill_view("context-bro:context-inspect")` gives an agent the operating notes for the CLI command.
 - `--help` shows usage and examples for both the CLI command and the slash command.
 - `--focus <node>` drills into a subtree such as `tools.terminal`.
 - `--depth <n>` limits how deep the tree is rendered.
