@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from hermes_cli.profiles import get_active_profile_name, get_profile_dir, list_profiles
+from hermes_cli.profiles import get_profile_dir
 
 from .core import PromptSnapshot, _subtract_blocks
 
@@ -50,22 +50,11 @@ def _resolve_agent_home(agent_name: str | None) -> tuple[str, Path]:
     if not agent_name:
         return "default", _hermes_home()
 
-    active = get_active_profile_name()
-
     requested = str(agent_name).strip()
     if not requested:
-        return active, _hermes_home()
-
-    if requested.casefold() == active.casefold():
-        return active, _hermes_home()
-
-    try:
-        for profile in list_profiles():
-            if profile.name.casefold() == requested.casefold():
-                return profile.name, profile.path
-    except Exception:
-        pass
-
+        return "default", _hermes_home()
+    if requested.casefold() == "default":
+        return "default", _hermes_home()
     try:
         return requested, get_profile_dir(requested)
     except Exception:
@@ -447,7 +436,7 @@ def load_runtime_snapshot(
                 session_title,
                 session_display_name,
                 session_messages,
-            ) = _load_session_snapshot(session_id, agent_name=requested_agent_name)
+            ) = _load_session_snapshot(session_id, agent_name=selected_agent_name)
             if loaded_session_id:
                 path = _resolve_agent_home(agent_name)[1] / "state.db"
                 if path.exists():

@@ -81,14 +81,14 @@ def render_table(
     lines.append(
         f"platform={report.platform}  agent={report.agent_name or 'default'}  "
         f"model={report.model or 'unset'}  session={report.session_id or 'n/a'}  "
-        f"name={report.session_title or report.session_display_name or 'untitled'}  "
+        f"session_title={report.session_title or 'untitled'}  "
         f"total={_fmt_tokens(report.total_tokens)} tok"
     )
+    if report.session_display_name:
+        lines.append(f"session_display_name={report.session_display_name}")
     if focus_query:
         path_text = " > ".join(node.label for node in path)
         lines.append(f"focus={focus_query}  path={path_text}")
-    if report.session_display_name and report.session_display_name != report.session_title:
-        lines.append(f"session_display_name={report.session_display_name}")
     if report.session_source:
         lines.append(f"session_source={report.session_source}")
     if report.warnings:

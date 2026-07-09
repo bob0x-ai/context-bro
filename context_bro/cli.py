@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agent",
         default=None,
-        help="Inspect the latest session for a specific Hermes profile",
+        help="Inspect the latest session for a specific Hermes profile (defaults to default)",
     )
     parser.add_argument("--session-id", default=None, help="Inspect a specific session from state.db")
     parser.add_argument(

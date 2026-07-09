@@ -1,4 +1,4 @@
-from context_bro.adapters import RuntimeSnapshot, snapshot_to_prompt_snapshot
+from context_bro.adapters import RuntimeSnapshot, _resolve_agent_home, snapshot_to_prompt_snapshot
 from context_bro.core import ContextTreeNode, PromptSnapshot, build_context_report
 
 
@@ -83,6 +83,16 @@ def test_snapshot_conversion_preserves_runtime_fields() -> None:
     assert prompt.model == "model-x"
     assert prompt.environment_bundle == "env"
     assert prompt.warnings == ["warn"]
+
+
+def test_resolve_agent_home_defaults_to_default(tmp_path, monkeypatch) -> None:
+    hermes_home = tmp_path / ".hermes"
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+
+    agent_name, home = _resolve_agent_home(None)
+
+    assert agent_name == "default"
+    assert home == hermes_home
 
 
 def test_session_snapshot_uses_requested_agent_profile(tmp_path, monkeypatch) -> None:

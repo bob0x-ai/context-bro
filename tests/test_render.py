@@ -33,6 +33,7 @@ def test_render_table_contains_summary_and_rows() -> None:
     text = render_table(_report())
     assert "Context Bro snapshot" in text
     assert "Stable system prompt" in text
+    assert "session_title=" in text
 
 
 def test_render_json_is_valid() -> None:

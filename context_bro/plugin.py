@@ -4,8 +4,6 @@ import argparse
 import shlex
 from typing import Any
 
-from hermes_cli.profiles import get_active_profile_name
-
 from .adapters import load_runtime_snapshot, snapshot_to_prompt_snapshot
 from .core import build_context_report
 from .render import render_json, render_table
@@ -42,7 +40,7 @@ def _run_from_args(args: argparse.Namespace) -> str:
     snapshot = load_runtime_snapshot(
         platform=getattr(args, "platform", "cli") or "cli",
         cwd=getattr(args, "cwd", None),
-        agent=getattr(args, "agent", None) or get_active_profile_name(),
+        agent=getattr(args, "agent", None) or "default",
         include_session=not bool(getattr(args, "no_session", False)),
         session_id=getattr(args, "session_id", None),
     )
@@ -64,12 +62,11 @@ def _setup_cli(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a table")
     parser.add_argument("--platform", default="cli", help="Hermes platform to inspect")
     parser.add_argument("--cwd", default=None, help="Working directory used for context-file discovery")
-    parser.add_argument("--agent", default=None, help="Inspect the latest session for a Hermes profile")
+    parser.add_argument("--agent", default=None, help="Inspect the latest session for a Hermes profile (defaults to default)")
     parser.add_argument("--session-id", default=None, help="Inspect a specific session from state.db")
     parser.add_argument("--focus", default=None, help="Render only the matching subtree")
     parser.add_argument("--no-session", action="store_true", help="Skip state.db session-history inspection")
     parser.add_argument("--max-depth", "--depth", type=int, default=2, help="Maximum tree depth to render in text mode")
-    parser.add_argument("--help", action="store_true", help="Show usage and exit")
     parser.set_defaults(func=_handle_cli)
 
 
@@ -92,5 +89,5 @@ def register(ctx) -> None:
         "context",
         handler=_handle_slash,
         description="Inspect prompt/context blocks and tool schemas",
-        args_hint="[--json] [--help] [--focus <node>] [--depth <n>] [--session-id <id>] [--no-session]",
+        args_hint="[--json] [--help] [--agent <profile>] [--focus <node>] [--depth <n>] [--session-id <id>] [--no-session]",
     )
